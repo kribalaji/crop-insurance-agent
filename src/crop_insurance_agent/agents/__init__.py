@@ -1,1 +1,1 @@
-"""Agent nodes. Only weather_agent exists so far; policy, claim and advisory follow."""
+"""Agent nodes: weather, policy and claim exist; advisory follows."""

@@ -2,7 +2,8 @@
 
 Multi-agent crop insurance claims system (LangGraph supervisor) built only on public data.
 
-> Work in progress: so far `llm.py`, `weather_agent` and `policy_agent` are implemented.
+> Work in progress: so far `llm.py`, `weather_agent`, `policy_agent` and `claim_agent` are
+> implemented; the supervisor graph, advisory_agent and services come next.
 > The architecture diagram and full docs come with the remaining agents.
 
 ## Setup
@@ -51,3 +52,20 @@ uv run crop-insurance-agent policy --policy-id sample_rwbcis_paddy_thanjavur \
 # real-LLM extraction check on the sample PDFs (uses LLM_PROVIDER / LLM_MODEL)
 RUN_LIVE_LLM=1 uv run pytest -m live
 ```
+
+## Claims
+
+`claim_agent` prices each met, verified trigger with the standard parametric rule:
+payout % = max payout % × (observed − trigger) / (exit − trigger), clamped to 0..1.
+A trigger with no exit pays its maximum. The total is capped at 100% of the sum insured,
+and payout = total % × sum insured per hectare × area. No LLM is involved.
+
+The node then pauses with a LangGraph `interrupt()` carrying the estimate. A reviewer
+resumes the graph with:
+
+```python
+graph.invoke(Command(resume={"approved": True, "reviewer": "officer-1", "comment": "ok"}), config)
+```
+
+A rejected claim keeps its estimate for the audit trail and pays 0. A malformed decision
+(e.g. no reviewer) is refused, and the graph stays paused.
