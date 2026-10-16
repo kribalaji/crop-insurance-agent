@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     langfuse_public_key: SecretStr | None = None
     langfuse_secret_key: SecretStr | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_enabled: bool = True  # tracing also needs both Langfuse keys
 
     data_dir: Path = Path("data")
     cache_dir: Path = Path("cache")

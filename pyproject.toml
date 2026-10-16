@@ -15,7 +15,9 @@ dependencies = [
     "langchain-google-genai>=4.4.2",
     "langchain-ollama>=1.1.0",
     "langchain-text-splitters>=1.1.3",
+    "langfuse>=5.0.1",
     "langgraph>=1.2.15",
+    "mcp>=2.3.0",
     "netcdf4>=1.7.5",
     "pandas>=3.0.6",
     "pyarrow>=26.0.0",
@@ -27,6 +29,7 @@ dependencies = [
 
 [project.scripts]
 crop-insurance-agent = "crop_insurance_agent:main"
+crop-insurance-mcp = "crop_insurance_agent.mcp_server.server:main"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]

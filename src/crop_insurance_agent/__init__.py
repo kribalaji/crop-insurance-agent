@@ -83,9 +83,14 @@ def _run_claim(args: argparse.Namespace) -> None:
     from langgraph.types import Command
 
     from crop_insurance_agent.graph import build_graph
+    from crop_insurance_agent.observability import flush, trace_config
 
     graph = build_graph()
-    config = {"configurable": {"thread_id": args.claim_id}}
+    config = trace_config(
+        {"configurable": {"thread_id": args.claim_id}},
+        session_id=args.claim_id,
+        tags=["cli"],
+    )
     state = graph.invoke(
         {
             "weather_request": {
@@ -121,3 +126,4 @@ def _run_claim(args: argparse.Namespace) -> None:
     print(f"\n{advisory.headline}\n{advisory.explanation}")
     if advisory.generated_by == "template":
         print("(template wording: the LLM text failed the number check)")
+    flush()

@@ -2,8 +2,8 @@
 
 Multi-agent crop insurance claims system (LangGraph supervisor) built only on public data.
 
-> Work in progress: the four agents and the supervisor graph are implemented; MCP, Langfuse,
-> FastAPI, Streamlit and Docker Compose come next.
+> Work in progress: the four agents, supervisor graph, MCP server and Langfuse tracing are
+> implemented; FastAPI, Streamlit and Docker Compose come next.
 > The architecture diagram and full docs come with the remaining agents.
 
 ## Setup
@@ -88,6 +88,41 @@ uv run crop-insurance-agent claim --policy-id sample_rwbcis_paddy_thanjavur \
   --lat 10.79 --lon 79.14 --start 2023-06-01 --end 2023-09-30 --crop rice \
   --area 2 --reviewer officer-1
 ```
+
+## MCP policy-lookup server
+
+`crop-insurance-mcp` serves the policy index over MCP. Its tools only retrieve text; they
+never call an LLM, so the server needs no API key.
+
+- `list_policies()`: ids of the indexed policy PDFs
+- `lookup_policy(policy_id, query, k=4)`: verbatim excerpts with page numbers
+
+```bash
+uv run crop-insurance-mcp                                     # stdio
+uv run crop-insurance-mcp --transport streamable-http --port 8001
+```
+
+Claude Desktop / IDE config:
+
+```json
+{
+  "mcpServers": {
+    "crop-insurance-policies": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/crop-insurance-agent", "run", "crop-insurance-mcp"]
+    }
+  }
+}
+```
+
+## Tracing (Langfuse)
+
+Tracing turns on when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set
+(`LANGFUSE_ENABLED=false` switches it off). Each graph run is traced through the Langfuse
+LangChain callback: every agent node, retrieval and LLM call becomes a span. The claim id is
+the session id, so a claim's first run and its post-approval resume appear as one session.
+Traces contain prompts, policy excerpts, the farm location and payout amounts. Self-host
+Langfuse or switch tracing off if that data must not leave your machine.
 
 ## Known limitations
 
