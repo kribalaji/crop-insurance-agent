@@ -2,8 +2,62 @@
 
 Multi-agent crop insurance claims system (LangGraph supervisor) built only on public data.
 
-> Work in progress: the four agents, supervisor graph, MCP server, Langfuse tracing and the
-> FastAPI backend are implemented; Streamlit and Docker Compose come next.
+Weather numbers and payouts are computed in code. The LLM only reads policy text and writes
+the farmer's explanation, and both outputs are checked against source text or facts. A
+human approves every claim.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph clients[Clients]
+        UI[Streamlit UI]
+        CLI[CLI]
+        MCPC[MCP clients<br/>Claude Desktop, IDEs]
+    end
+
+    subgraph backend[FastAPI backend]
+        API[REST API<br/>/claims, /decision, /retry]
+    end
+
+    subgraph lg[LangGraph supervisor]
+        SUP{supervisor<br/>rule-based routing}
+        W[weather_agent<br/>rainfall deficit, GDU]
+        P[policy_agent<br/>RAG + LLM extraction<br/>quote verification]
+        C[claim_agent<br/>parametric payout]
+        H([human approval<br/>interrupt])
+        A[advisory_agent<br/>plain-language note<br/>number check]
+        SUP --> W --> SUP
+        SUP --> P --> SUP
+        SUP --> C --> H --> SUP
+        SUP --> A --> SUP
+    end
+
+    subgraph data[Public data and stores]
+        ERA5[(ERA5 / IMD<br/>NetCDF, .grd)]
+        PQ[(Parquet cache)]
+        PDF[(Policy PDFs)]
+        CH[(Chroma index)]
+        SQL[(SQLite checkpoints)]
+    end
+
+    LLM[[LLM provider<br/>Gemini / Anthropic / Ollama]]
+    LF[[Langfuse traces]]
+    MCPS[MCP server<br/>list_policies, lookup_policy]
+
+    UI -->|HTTP| API
+    CLI --> SUP
+    API --> SUP
+    API --- SQL
+    MCPC --> MCPS --> CH
+    W --> ERA5
+    W --> PQ
+    P --> CH
+    PDF --> CH
+    P --> LLM
+    A --> LLM
+    lg -.-> LF
+```
 > The architecture diagram and full docs come with the remaining agents.
 
 ## Setup
@@ -147,6 +201,37 @@ paused claims survive restarts. Loading a checkpoint only rebuilds this project'
 schemas. Runs execute inside the request, and a per-claim lock stops two requests from
 advancing the same claim at once.
 
+## Streamlit UI
+
+```bash
+uv run crop-insurance-api                                   # in one terminal
+uv run streamlit run src/crop_insurance_agent/ui/app.py     # in another
+```
+
+The UI only talks to the API (`API_URL`, default `http://127.0.0.1:8000`). It has three tabs:
+
+- **Submit claim**
+- **Review queue**: estimate, per-cover breakdown, and any default assumptions shown as
+  warnings, with approve/reject that requires a reviewer name.
+- **All claims**: filter by status; open a claim to see weather, policy conditions with
+  their quotes and excerpts, the decision and the farmer's message; retry stalled claims.
+
+## Docker Compose
+
+```bash
+docker compose up --build                       # API :8000, UI :8501, MCP :8001
+docker compose --profile ollama up --build      # plus a local Ollama server
+```
+
+All services run from one image and bind to `127.0.0.1` only. Weather data is mounted
+read-only from `DATA_HOST_DIR` (default `/mnt/g/datasets`, the external drive the local
+`data` symlink points to; Docker does not follow a symlinked bind source). The folder must
+exist, or `docker compose up` stops with an error instead of mounting an empty one.
+Override with `DATA_HOST_DIR=/path docker compose up`. Claim state, the Parquet cache, the
+Chroma indexes and the embedding model live in named volumes. The MCP server keeps its own
+Chroma index, because two processes must not write the same Chroma directory. Secrets come
+from `.env`.
+
 ## Tracing (Langfuse)
 
 Tracing turns on when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set
@@ -172,3 +257,7 @@ Langfuse or switch tracing off if that data must not leave your machine.
   `gemini-3.8-flash` if you need runs to stay reproducible. Free-tier keys get about 20
   requests per model per day, and each claim makes 2 LLM calls.
 - **Sample policies only.** The bundled PDFs are illustrative, not real insurer documents.
+- **Docker setup not yet run under Docker.** The image and Compose file were checked
+  locally (frozen install, service commands with container settings) but not built.
+- **`.env` line endings.** Use LF line endings. With CRLF, values carry a trailing `\r`,
+  which some tools (including Docker Compose `env_file`) may not strip.

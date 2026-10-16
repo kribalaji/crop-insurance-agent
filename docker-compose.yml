@@ -1,0 +1,93 @@
+# docker compose up --build        -> API :8000, UI :8501, MCP :8001 (localhost only)
+# docker compose --profile ollama up --build   also starts a local Ollama server
+#
+# Weather data is mounted read-only from DATA_HOST_DIR (default /mnt/g/datasets);
+# the folder must exist, or `up` stops with an error.
+# Ports bind to 127.0.0.1 because the services have no authentication yet.
+
+name: crop-insurance-agent
+
+x-env: &env
+  DATA_DIR: /app/data
+  CACHE_DIR: /app/cache
+  POLICIES_DIR: /app/policies
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+
+x-app: &app
+  build: .
+  image: crop-insurance-agent:local
+  env_file:
+    - path: .env
+      required: false
+  restart: unless-stopped
+  volumes:
+    # Weather data straight from the external drive, not via the ./data symlink:
+    # Docker does not follow a symlinked bind source. create_host_path: false makes
+    # `up` fail loudly if the folder is missing instead of mounting an empty one.
+    - type: bind
+      source: ${DATA_HOST_DIR:-/mnt/g/datasets}
+      target: /app/data
+      read_only: true
+      bind:
+        create_host_path: false
+    - ./policies:/app/policies:ro
+    - app-cache:/app/cache
+    - model-cache:/home/app/.cache
+
+services:
+  api:
+    <<: *app
+    environment:
+      <<: *env
+    command: ["crop-insurance-api", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s # first start downloads the embedding model
+
+  ui:
+    <<: *app
+    environment:
+      <<: *env
+      API_URL: http://api:8000
+    command:
+      - streamlit
+      - run
+      - src/crop_insurance_agent/ui/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  mcp:
+    <<: *app
+    environment:
+      <<: *env
+      # Separate Chroma index: two processes must not write one Chroma directory.
+      CHROMA_DIR: /app/cache/chroma-mcp
+    command: ["crop-insurance-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "127.0.0.1:8001:8001"
+
+  ollama:
+    image: ollama/ollama:0.6.8
+    profiles: ["ollama"]
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+
+volumes:
+  app-cache:
+  model-cache:
+  ollama-models:
