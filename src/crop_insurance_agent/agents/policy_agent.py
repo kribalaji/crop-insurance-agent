@@ -175,8 +175,14 @@ def assess_policy(
     return evaluate(request.policy_id, terms, weather, chunks)
 
 
-def policy_agent(state: Mapping[str, Any]) -> dict[str, Any]:
+def policy_agent(
+    state: Mapping[str, Any],
+    *,
+    settings: Settings | None = None,
+    llm: BaseChatModel | None = None,
+    store: PolicyStore | None = None,
+) -> dict[str, Any]:
     """LangGraph node: `policy_request` + `weather` in, `policy` (PolicyAssessment) out."""
     request = PolicyRequest.model_validate(state["policy_request"])
     weather = WeatherAssessment.model_validate(state["weather"])
-    return {"policy": assess_policy(request, weather)}
+    return {"policy": assess_policy(request, weather, settings, llm=llm, store=store)}

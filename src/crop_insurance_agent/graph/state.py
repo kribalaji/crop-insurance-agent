@@ -3,10 +3,23 @@
 from typing import Any, TypedDict
 
 
+class AgentError(TypedDict):
+    agent: str
+    kind: str
+    message: str
+
+
 class ClaimState(TypedDict, total=False):
+    # Inputs
     weather_request: dict[str, Any]
-    weather: Any  # WeatherAssessment
     policy_request: dict[str, Any]
-    policy: Any  # PolicyAssessment
     claim_request: dict[str, Any]
+    language: str  # advisory language code; "en" for now
+    # Agent outputs
+    weather: Any  # WeatherAssessment
+    policy: Any  # PolicyAssessment
     claim: Any  # ClaimDecision
+    advisory: Any  # AdvisoryNote
+    # Supervisor bookkeeping
+    next: str
+    error: AgentError

@@ -1,1 +1,1 @@
-"""Agent nodes: weather, policy and claim exist; advisory follows."""
+"""Agent nodes: weather, policy, claim and advisory."""

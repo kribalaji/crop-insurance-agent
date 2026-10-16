@@ -129,7 +129,7 @@ def assess_weather(request: WeatherRequest, settings: Settings | None = None) ->
     )
 
 
-def weather_agent(state: Mapping[str, Any]) -> dict[str, Any]:
+def weather_agent(state: Mapping[str, Any], *, settings: Settings | None = None) -> dict[str, Any]:
     """LangGraph node: `weather_request` in, `weather` (WeatherAssessment) out."""
     request = WeatherRequest.model_validate(state["weather_request"])
-    return {"weather": assess_weather(request)}
+    return {"weather": assess_weather(request, settings)}

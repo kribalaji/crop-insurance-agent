@@ -2,8 +2,8 @@
 
 Multi-agent crop insurance claims system (LangGraph supervisor) built only on public data.
 
-> Work in progress: so far `llm.py`, `weather_agent`, `policy_agent` and `claim_agent` are
-> implemented; the supervisor graph, advisory_agent and services come next.
+> Work in progress: the four agents and the supervisor graph are implemented; MCP, Langfuse,
+> FastAPI, Streamlit and Docker Compose come next.
 > The architecture diagram and full docs come with the remaining agents.
 
 ## Setup
@@ -67,5 +67,33 @@ resumes the graph with:
 graph.invoke(Command(resume={"approved": True, "reviewer": "officer-1", "comment": "ok"}), config)
 ```
 
+A cover with no cut-off pays its full maximum by default. This is listed under `assumptions`
+in the estimate and in the approval prompt, so the reviewer can see it is not from the policy.
 A rejected claim keeps its estimate for the audit trail and pays 0. A malformed decision
 (e.g. no reviewer) is refused, and the graph stays paused.
+
+## Advisory and the supervisor graph
+
+`advisory_agent` builds a facts block from the other agents' outputs, and the LLM writes a
+plain-English explanation from it. Every number in that text must match a fact (rounding
+allowed). If any number doesn't match, a fixed template is used instead, and the output
+records `generated_by: "template"`. English only for now; Tamil/Hindi are planned.
+
+`graph/supervisor.py` routes with fixed rules: weather → policy → claim (pauses for
+approval) → advisory. If the weather data is unusable or the policy id is unknown, the
+error is recorded and sent straight to advisory, so the farmer still gets an explanation.
+
+```bash
+uv run crop-insurance-agent claim --policy-id sample_rwbcis_paddy_thanjavur \
+  --lat 10.79 --lon 79.14 --start 2023-06-01 --end 2023-09-30 --crop rice \
+  --area 2 --reviewer officer-1
+```
+
+## Known limitations
+
+- **In-memory checkpointer.** Claims paused for approval live in process memory
+  (`InMemorySaver`). A restart loses them. This will move to SQLite when the FastAPI
+  backend is built.
+- **Gemini default model.** `gemini-2.5-flash` is no longer available to new API keys.
+  Set `LLM_MODEL` (e.g. `gemini-3.8-flash`) until the default is updated.
+- **Sample policies only.** The bundled PDFs are illustrative, not real insurer documents.

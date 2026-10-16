@@ -1,4 +1,4 @@
-"""Real LLM extraction on the sample PDFs. Opt in: RUN_LIVE_LLM=1 uv run pytest -m live
+"""Real LLM calls (policy extraction, advisory). Opt in: RUN_LIVE_LLM=1 uv run pytest -m live
 
 Uses the configured LLM_PROVIDER and Chroma's default local embedding model.
 """
@@ -50,3 +50,19 @@ def test_yield_scheme_skips_unsupported_covers(extracted):
         ("rainfall_deficit_pct", ">=", 50)
     ]  # prevented sowing and CCE-based final claim are not weather triggers
     assert terms.sum_insured_per_ha == 55000
+
+
+def test_advisory_numbers_come_from_facts():
+    from crop_insurance_agent.agents.advisory_agent import (
+        build_facts,
+        unsupported_numbers,
+        write_advisory,
+    )
+    from tests.factories import make_weather
+    from tests.test_advisory_agent import _claim, _policy
+
+    facts = build_facts(make_weather(), _policy(), _claim(), None)
+    note = write_advisory(facts, get_llm())
+    print(f"\n[{note.generated_by}] {note.headline}\n{note.explanation}\n{note.notes}")
+    assert unsupported_numbers(f"{note.headline} {note.explanation}", facts) == []
+    assert "48132" in (note.headline + note.explanation).replace(",", "")

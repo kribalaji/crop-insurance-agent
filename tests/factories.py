@@ -68,3 +68,25 @@ def make_weather(**kw) -> WeatherAssessment:
         data_coverage_pct=100.0,
     )
     return WeatherAssessment(**(base | kw))
+
+
+class StubLLM:
+    """Stands in for a chat model: answers per structured-output schema.
+
+    Each response is either a fixed object or a callable taking the messages.
+    Every call is recorded in `calls` as (schema, messages).
+    """
+
+    def __init__(self, responses: dict) -> None:
+        self.responses = responses
+        self.calls: list = []
+
+    def with_structured_output(self, schema):
+        from langchain_core.runnables import RunnableLambda
+
+        def run(messages):
+            self.calls.append((schema, messages))
+            response = self.responses[schema]
+            return response(messages) if callable(response) else response
+
+        return RunnableLambda(run)
