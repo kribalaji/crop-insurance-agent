@@ -6,10 +6,12 @@ advisory. Every worker returns to the supervisor, which picks the next step from
 what is already in the state.
 
 Expected domain failures (no usable weather data, unknown policy) are recorded
-in `error` and routed straight to advisory_agent, so the farmer still gets an
-explanation. Anything else propagates.
+in `error`, logged, and routed straight to advisory_agent so the farmer still
+gets an explanation; the run then ends with `status: "failed"` so an operator
+sees it. A clean run ends with `status: "completed"`. Anything else propagates.
 """
 
+import logging
 from collections.abc import Callable, Mapping
 from functools import partial
 from typing import Any
@@ -39,6 +41,8 @@ PIPELINE = (
 WORKERS = tuple(node for _, node in PIPELINE)
 RECOVERABLE_ERRORS: tuple[type[Exception], ...] = (WeatherDataError, PolicyNotFoundError)
 
+log = logging.getLogger(__name__)
+
 
 def next_step(state: Mapping[str, Any]) -> str:
     if state.get("error"):
@@ -50,7 +54,11 @@ def next_step(state: Mapping[str, Any]) -> str:
 
 
 def supervisor(state: ClaimState) -> dict[str, Any]:
-    return {"next": next_step(state)}
+    step = next_step(state)
+    update: dict[str, Any] = {"next": step}
+    if step == END:
+        update["status"] = "failed" if state.get("error") else "completed"
+    return update
 
 
 def _guarded(name: str, node: Callable[[ClaimState], dict[str, Any]]):
@@ -58,6 +66,7 @@ def _guarded(name: str, node: Callable[[ClaimState], dict[str, Any]]):
         try:
             return node(state)
         except RECOVERABLE_ERRORS as exc:
+            log.error("%s failed, run will be marked failed: %s", name, exc)
             return {"error": {"agent": name, "kind": type(exc).__name__, "message": str(exc)}}
 
     return run

@@ -108,3 +108,17 @@ def test_routing_order():
     assert next_step({"weather": 1, "policy": 1, "claim": 1, "advisory": 1}) == "__end__"
     assert next_step({"error": {"agent": "weather_agent"}}) == "advisory_agent"
     assert next_step({"error": {"agent": "weather_agent"}, "advisory": 1}) == "__end__"
+
+
+def test_run_status_marks_failures(graph, caplog):
+    done = graph.invoke(
+        _inputs(latitude=20.0, longitude=85.0), {"configurable": {"thread_id": "f"}}
+    )
+    assert done["status"] == "failed"
+    assert any(r.levelname == "ERROR" and "weather_agent" in r.message for r in caplog.records)
+
+    config = {"configurable": {"thread_id": "ok"}}
+    graph.invoke(_inputs(), config)
+    assert "status" not in graph.get_state(config).values  # paused, not finished
+    done = graph.invoke(Command(resume={"approved": False, "reviewer": "o"}), config)
+    assert done["status"] == "completed"

@@ -74,6 +74,21 @@ def trace_config(
     }
 
 
+def record_run_status(
+    session_id: str, status: str, comment: str | None = None, settings: Settings | None = None
+) -> None:
+    """Score the claim's Langfuse session with its final status (filterable in the UI)."""
+    settings = settings or get_settings()
+    if tracing_enabled(settings):
+        init_langfuse(settings).create_score(
+            name="run_status",
+            value=status,
+            session_id=session_id,
+            data_type="CATEGORICAL",
+            comment=comment,
+        )
+
+
 def flush(settings: Settings | None = None) -> None:
     """Send buffered spans; call before a short-lived process exits."""
     settings = settings or get_settings()

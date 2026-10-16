@@ -64,3 +64,25 @@ def test_claim_run_is_traced_as_one_session(exporter, data_dir: Path, policies_d
     assert len(roots) == 2  # first run and post-approval resume
     sessions = {s.attributes.get("session.id") for s in roots}
     assert sessions == {"C-42"}
+
+
+def test_run_status_is_scored_on_the_session(monkeypatch):
+    from crop_insurance_agent.observability import record_run_status
+
+    calls = []
+    settings = Settings(_env_file=None, **KEYS)
+    from langfuse import Langfuse
+
+    monkeypatch.setattr(Langfuse, "create_score", lambda self, **kw: calls.append(kw))
+    record_run_status("C-9", "failed", "no weather files", settings)
+    assert calls == [
+        {
+            "name": "run_status",
+            "value": "failed",
+            "session_id": "C-9",
+            "data_type": "CATEGORICAL",
+            "comment": "no weather files",
+        }
+    ]
+    record_run_status("C-9", "failed", settings=Settings(_env_file=None))  # disabled: no call
+    assert len(calls) == 1

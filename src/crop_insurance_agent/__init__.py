@@ -83,7 +83,7 @@ def _run_claim(args: argparse.Namespace) -> None:
     from langgraph.types import Command
 
     from crop_insurance_agent.graph import build_graph
-    from crop_insurance_agent.observability import flush, trace_config
+    from crop_insurance_agent.observability import flush, record_run_status, trace_config
 
     graph = build_graph()
     config = trace_config(
@@ -126,4 +126,8 @@ def _run_claim(args: argparse.Namespace) -> None:
     print(f"\n{advisory.headline}\n{advisory.explanation}")
     if advisory.generated_by == "template":
         print("(template wording: the LLM text failed the number check)")
+    error = state.get("error")
+    record_run_status(args.claim_id, state["status"], error and error["message"])
     flush()
+    if state["status"] == "failed":
+        raise SystemExit(f"\nRun FAILED at {error['agent']}: {error['message']}")

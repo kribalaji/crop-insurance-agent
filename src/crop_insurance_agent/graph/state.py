@@ -23,3 +23,6 @@ class ClaimState(TypedDict, total=False):
     # Supervisor bookkeeping
     next: str
     error: AgentError
+    # Set when the run ends: "completed", or "failed" if an agent recorded an error
+    # (the farmer still gets an advisory, but the run is not treated as a success).
+    status: str
