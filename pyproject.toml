@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "imdlib>=0.3.1",
     "langchain-anthropic>=1.7.6",
     "langchain-core>=1.6.11",
     "langchain-google-genai>=4.4.2",
@@ -37,6 +38,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = ["ignore:datetime.datetime.utcnow:DeprecationWarning:imdlib"]
 
 [tool.ruff]
 line-length = 100

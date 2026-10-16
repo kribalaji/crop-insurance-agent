@@ -1,19 +1,25 @@
-"""Read gridded ERA5 / IMD NetCDF files into a daily series at one grid point.
+"""Read gridded ERA5 / IMD files into a daily series at one grid point.
 
 Expected layout:
-    $DATA_DIR/era5/**/*.nc   ERA5 / ERA5-Land, hourly or daily. Precipitation `tp`
-                             (metres); temperature `mx2t`/`mn2t` or `t2m` (kelvin).
-    $DATA_DIR/imd/**/*.nc    IMD gridded daily rainfall (mm) and Tmax/Tmin (deg C),
-                             e.g. as written by imdlib's `to_netcdf`.
+    $DATA_DIR/era5/**/*.nc   ERA5 / ERA5-Land NetCDF, hourly or daily, read with
+                             xarray/netCDF4. Precipitation `tp` (metres);
+                             temperature `mx2t`/`mn2t` or `t2m` (kelvin).
+    $DATA_DIR/imd/rain/      IMD binary archives as downloaded, read with imdlib:
+    $DATA_DIR/imd/tmax/        rain/Rainfall_ind{YYYY}_rfp25.grd (0.25 deg),
+    $DATA_DIR/imd/tmin/        tmax/Maxtemp_MaxT_{YYYY}.GRD, tmin/Mintemp_MinT_{YYYY}.GRD
+                               (1 deg), or {YYYY}.grd / {YYYY}.GRD in each folder.
+    $DATA_DIR/imd/**/*.nc    IMD NetCDF, e.g. as written by imdlib's `to_netcdf`.
 
 Variables may be split across files (e.g. one file per year per variable).
 Days are UTC calendar days for ERA5 and IMD's own day definition for IMD.
 """
 
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+import imdlib
 import pandas as pd
 import xarray as xr
 
@@ -76,12 +82,46 @@ _SPECS: dict[WeatherSource, list[_VarSpec]] = {
 MAX_GRID_DISTANCE_DEG = 0.5
 
 
+_NETCDF_SUFFIXES = {".nc", ".nc4", ".netcdf"}
+_IMD_GRD_VARS = ("rain", "tmax", "tmin")
+
+
+def _is_imd_grd(path: Path) -> bool:
+    return path.suffix.lower() == ".grd"
+
+
 def source_files(data_dir: Path, source: WeatherSource) -> list[Path]:
     root = data_dir / source
-    files = sorted(p for p in root.rglob("*") if p.suffix in {".nc", ".nc4", ".netcdf"})
+    files = sorted(
+        p
+        for p in root.rglob("*")
+        if p.suffix.lower() in _NETCDF_SUFFIXES or (source == "imd" and _is_imd_grd(p))
+    )
     if not files:
-        raise WeatherDataError(f"no NetCDF files found under {root}")
+        raise WeatherDataError(f"no weather files found under {root}")
     return files
+
+
+def _open_imd_grd(path: Path) -> xr.Dataset:
+    """One year of an IMD binary archive, via imdlib, with missing values as NaN."""
+    var = path.parent.name
+    year = re.search(r"(\d{4})", path.stem)
+    if var not in _IMD_GRD_VARS or year is None:
+        raise WeatherDataError(
+            f"{path}: IMD .grd files must sit in imd/rain, imd/tmax or imd/tmin "
+            "and carry the year in their name"
+        )
+    yr = int(year.group(1))
+    fn_format = "yearwise" if path.stem == str(yr) else None
+    try:
+        data = imdlib.open_data(var, yr, yr, fn_format=fn_format, file_dir=str(path.parent.parent))
+    except Exception as exc:  # imdlib raises bare Exception / FileNotFoundError
+        raise WeatherDataError(f"imdlib could not read {path}: {exc}") from exc
+    return data.get_xarray()
+
+
+def _open(path: Path) -> xr.Dataset:
+    return _open_imd_grd(path) if _is_imd_grd(path) else xr.open_dataset(path)
 
 
 def _first(names: Iterable[str], candidates: Iterable[str]) -> str | None:
@@ -134,21 +174,23 @@ def load_point_daily(
 ) -> pd.DataFrame:
     """Daily `precip_mm`, `tmax_c`, `tmin_c` at the grid point nearest (lat, lon).
 
-    The returned frame's `attrs` carry `grid_latitude` and `grid_longitude`.
+    The returned frame's `attrs` carry `grid_latitude` and `grid_longitude` of the
+    rainfall grid (IMD temperature is on a coarser 1 deg grid).
     """
     specs = _SPECS[source]
     raw: dict[int, list[pd.Series]] = {i: [] for i in range(len(specs))}
     grid: tuple[float, float] | None = None
 
     for path in files:
-        with xr.open_dataset(path) as ds:
+        with _open(path) as ds:
             for i, spec in enumerate(specs):
                 var = _first(ds.data_vars, spec.candidates)
                 if var is None:
                     continue
                 s, glat, glon = _extract_point(ds, var, lat, lon)
                 raw[i].append(spec.convert(s))
-                grid = grid or (glat, glon)
+                if spec.column == "precip_mm":
+                    grid = grid or (glat, glon)
 
     columns: dict[str, pd.Series] = {}
     for i, spec in enumerate(specs):

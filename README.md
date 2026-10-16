@@ -18,7 +18,10 @@ uv run pytest
 Put NetCDF files under `$DATA_DIR`:
 
 - `era5/**/*.nc`: ERA5 / ERA5-Land, hourly or daily, with `tp` and `mx2t`/`mn2t` or `t2m`
-- `imd/**/*.nc`: IMD gridded daily rainfall (`rf`/`RAINFALL`) and `TMAX`/`TMIN`
+- `imd/rain/Rainfall_ind{YYYY}_rfp25.grd`, `imd/tmax/Maxtemp_MaxT_{YYYY}.GRD`,
+  `imd/tmin/Mintemp_MinT_{YYYY}.GRD`: IMD binary archives as downloaded, read with imdlib
+  (`{YYYY}.grd` names also work)
+- `imd/**/*.nc`: IMD NetCDF (e.g. from imdlib `to_netcdf`) with `rain`/`rf` and `tmax`/`tmin`
 
 ```bash
 uv run crop-insurance-agent weather --lat 10.79 --lon 79.14 \
