@@ -5,6 +5,8 @@ Every season has a constant rain rate and a daily Tmax/Tmin of 30/20 deg C
 halved and temperatures are 2 deg C warmer (GDD 17/day).
 """
 
+import hashlib
+import re
 from pathlib import Path
 
 import numpy as np
@@ -90,3 +92,24 @@ def data_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture
 def settings(data_dir: Path, tmp_path: Path) -> Settings:
     return Settings(_env_file=None, data_dir=data_dir, cache_dir=tmp_path / "cache")
+
+
+def hash_embedder(texts: list[str], dims: int = 128) -> list[list[float]]:
+    """Deterministic bag-of-words embedding, so tests need no model download."""
+    out = []
+    for text in texts:
+        v = [0.0] * dims
+        for tok in re.findall(r"[a-z0-9]+", text.lower()):
+            v[int(hashlib.md5(tok.encode()).hexdigest(), 16) % dims] += 1.0
+        norm = sum(x * x for x in v) ** 0.5 or 1.0
+        out.append([x / norm for x in v])
+    return out
+
+
+@pytest.fixture(scope="session")
+def policies_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    from scripts.make_sample_policies import build
+
+    out = tmp_path_factory.mktemp("policies")
+    build(out)
+    return out

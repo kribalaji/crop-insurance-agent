@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
     cache_dir: Path = Path("cache")
+    policies_dir: Path = Path("policies")
+    chroma_dir: Path | None = None  # defaults to $CACHE_DIR/chroma
+
+    @property
+    def chroma_path(self) -> Path:
+        return self.chroma_dir or self.cache_dir / "chroma"
 
 
 @lru_cache

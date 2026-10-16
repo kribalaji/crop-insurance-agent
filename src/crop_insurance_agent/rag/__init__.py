@@ -1,1 +1,5 @@
-"""Chroma-backed retrieval over sample policy PDFs for policy_agent (not yet implemented)."""
+"""Chroma-backed retrieval over policy PDFs."""
+
+from crop_insurance_agent.rag.store import Chunk, PolicyNotFoundError, PolicyStore
+
+__all__ = ["Chunk", "PolicyNotFoundError", "PolicyStore"]

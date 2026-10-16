@@ -8,17 +8,20 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "chromadb>=1.5.9",
     "imdlib>=0.3.1",
     "langchain-anthropic>=1.7.6",
     "langchain-core>=1.6.11",
     "langchain-google-genai>=4.4.2",
     "langchain-ollama>=1.1.0",
+    "langchain-text-splitters>=1.1.3",
     "langgraph>=1.2.15",
     "netcdf4>=1.7.5",
     "pandas>=3.0.6",
     "pyarrow>=26.0.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.0",
+    "pypdf>=6.20.1",
     "xarray>=2026.9.0",
 ]
 
@@ -31,6 +34,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "fpdf2>=2.8.9",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
 ]
@@ -38,6 +42,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["live: calls a real LLM provider (needs RUN_LIVE_LLM=1)"]
 filterwarnings = ["ignore:datetime.datetime.utcnow:DeprecationWarning:imdlib"]
 
 [tool.ruff]
