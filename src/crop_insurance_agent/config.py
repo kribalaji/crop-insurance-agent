@@ -31,9 +31,15 @@ class Settings(BaseSettings):
     policies_dir: Path = Path("policies")
     chroma_dir: Path | None = None  # defaults to $CACHE_DIR/chroma
 
+    checkpoint_db: Path | None = None  # defaults to $CACHE_DIR/checkpoints.sqlite
+
     @property
     def chroma_path(self) -> Path:
         return self.chroma_dir or self.cache_dir / "chroma"
+
+    @property
+    def checkpoint_path(self) -> Path:
+        return self.checkpoint_db or self.cache_dir / "checkpoints.sqlite"
 
 
 @lru_cache

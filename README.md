@@ -2,8 +2,8 @@
 
 Multi-agent crop insurance claims system (LangGraph supervisor) built only on public data.
 
-> Work in progress: the four agents, supervisor graph, MCP server and Langfuse tracing are
-> implemented; FastAPI, Streamlit and Docker Compose come next.
+> Work in progress: the four agents, supervisor graph, MCP server, Langfuse tracing and the
+> FastAPI backend are implemented; Streamlit and Docker Compose come next.
 > The architecture diagram and full docs come with the remaining agents.
 
 ## Setup
@@ -82,6 +82,9 @@ records `generated_by: "template"`. English only for now; Tamil/Hindi are planne
 `graph/supervisor.py` routes with fixed rules: weather → policy → claim (pauses for
 approval) → advisory. If the weather data is unusable or the policy id is unknown, the
 error is recorded and sent straight to advisory, so the farmer still gets an explanation.
+Such a run still ends with `status: "failed"`. The error is logged at ERROR level, the
+Langfuse session gets the score `run_status=failed`, the CLI exits non-zero, and the API
+lists the claim under `?status=failed`.
 
 ```bash
 uv run crop-insurance-agent claim --policy-id sample_rwbcis_paddy_thanjavur \
@@ -115,6 +118,35 @@ Claude Desktop / IDE config:
 }
 ```
 
+## HTTP API (FastAPI)
+
+```bash
+uv run crop-insurance-api                    # http://127.0.0.1:8000/docs
+```
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/claims` | Run a claim until it pauses for approval (or ends early on an error) |
+| `GET` | `/claims?status=` | List claims, optionally filtered by status |
+| `GET` | `/claims/{id}` | Full state: weather, policy, pending review, decision, advisory |
+| `POST` | `/claims/{id}/decision` | `{"approved", "reviewer", "comment"}` for a paused claim |
+| `POST` | `/claims/{id}/retry` | Resume a stalled claim from its last checkpoint |
+| `GET` | `/policies` | Indexed policy ids |
+
+Claim statuses:
+
+- `awaiting_approval`: paused for a reviewer.
+- `completed`: finished normally.
+- `failed`: an agent error was explained to the farmer, and the run is marked failed.
+- `stalled`: an unexpected error stopped the run (e.g. an LLM outage). The request returns
+  500 with a hint. Fix the cause, then call `/retry`; finished steps are not repeated and
+  approval is not asked again.
+
+Each claim is a LangGraph thread persisted in SQLite (`$CACHE_DIR/checkpoints.sqlite`), so
+paused claims survive restarts. Loading a checkpoint only rebuilds this project's pydantic
+schemas. Runs execute inside the request, and a per-claim lock stops two requests from
+advancing the same claim at once.
+
 ## Tracing (Langfuse)
 
 Tracing turns on when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set
@@ -126,9 +158,17 @@ Langfuse or switch tracing off if that data must not leave your machine.
 
 ## Known limitations
 
-- **In-memory checkpointer.** Claims paused for approval live in process memory
-  (`InMemorySaver`). A restart loses them. This will move to SQLite when the FastAPI
-  backend is built.
-- **Gemini default model.** `gemini-2.5-flash` is no longer available to new API keys.
-  Set `LLM_MODEL` (e.g. `gemini-3.8-flash`) until the default is updated.
+- **CLI uses an in-memory checkpointer.** The `claim` CLI keeps state in memory for its
+  single interactive session. The API persists claims in SQLite.
+- **Synchronous runs.** `POST /claims` blocks while the weather, policy and LLM steps run.
+  A background job queue would be the next step for slow providers.
+- **Claim listing scans checkpoints.** `GET /claims` walks every checkpoint in SQLite. That
+  is fine for a demo, but a real deployment needs a claims index table.
+- **No authentication.** The API trusts whatever `reviewer` name the caller sends. That is
+  fine on localhost, but real authentication and authorisation are required before the API
+  is exposed beyond localhost.
+- **Gemini default model.** `gemini-2.5-flash` is limited to accounts that used it before.
+  Set `LLM_MODEL=gemini-flash-latest` (the stable alias). Pin a specific version such as
+  `gemini-3.8-flash` if you need runs to stay reproducible. Free-tier keys get about 20
+  requests per model per day, and each claim makes 2 LLM calls.
 - **Sample policies only.** The bundled PDFs are illustrative, not real insurer documents.

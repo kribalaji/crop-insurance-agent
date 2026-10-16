@@ -33,6 +33,7 @@ dependencies = [
 [project.scripts]
 crop-insurance-agent = "crop_insurance_agent:main"
 crop-insurance-mcp = "crop_insurance_agent.mcp_server.server:main"
+crop-insurance-api = "crop_insurance_agent.api.app:main"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]
