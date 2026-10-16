@@ -27,6 +27,9 @@ class CoverPayout(BaseModel):
     )
     payout_fraction: float = Field(ge=0, le=1, description="Share of max_payout_pct paid")
     payout_pct: float = Field(description="Payout as a percentage of the sum insured")
+    assumption: str | None = Field(
+        default=None, description="Set when the payout rests on a default, not the policy text"
+    )
 
 
 class ClaimEstimate(BaseModel):
@@ -41,6 +44,11 @@ class ClaimEstimate(BaseModel):
     payout_amount: float = Field(description="Rupees; 0 when the sum insured is unknown")
     needs_manual_assessment: bool = Field(
         description="A met trigger could not be priced, so the amount may be understated"
+    )
+    assumptions: list[str] = Field(
+        default_factory=list,
+        description="Default assumptions behind the amount that are not stated in the policy; "
+        "a reviewer must confirm them",
     )
     notes: list[str] = Field(default_factory=list)
 

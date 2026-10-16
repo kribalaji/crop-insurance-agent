@@ -50,7 +50,7 @@ def test_linear_payout_between_trigger_and_exit():
     assert est.total_payout_pct == 40.11
     assert est.sum_insured_total == 120000
     assert est.payout_amount == 48132.0
-    assert not est.needs_manual_assessment and est.notes == []
+    assert not est.needs_manual_assessment and est.notes == [] and est.assumptions == []
 
 
 def test_payout_saturates_beyond_exit_and_is_zero_at_trigger():
@@ -66,7 +66,20 @@ def test_cover_without_exit_pays_its_maximum():
     est = estimate_claim(REQUEST, _policy([_ev(adversity, 55.0, True)]))
     (cover,) = est.covers
     assert (cover.method, cover.payout_pct) == ("fixed", 20.0)
-    assert any("no exit threshold" in n for n in est.notes)
+    assert cover.assumption and cover.assumption.startswith("DEFAULT ASSUMPTION")
+    assert est.assumptions == [cover.assumption]  # surfaced at the top level of the estimate
+
+
+def test_reviewer_is_shown_default_assumptions(graph):
+    adversity = RELATIVE.model_copy(update={"threshold": 50, "exit_threshold": None})
+    config = {"configurable": {"thread_id": "assumption"}}
+    state = {
+        "claim_request": REQUEST.model_dump(),
+        "policy": _policy([_ev(adversity, 55.0, True)]).model_dump(mode="json"),
+    }
+    (pending,) = graph.invoke(state, config)["__interrupt__"]
+    assert "default assumptions" in pending.value["question"]
+    assert "not from the policy" in pending.value["assumptions"][0]
 
 
 def test_unverified_or_unmet_triggers_pay_nothing():

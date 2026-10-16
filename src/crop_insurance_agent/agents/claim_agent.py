@@ -43,8 +43,14 @@ def price_cover(ev: TriggerEvaluation) -> CoverPayout | str:
     if t.max_payout_pct is None:
         return f"{t.name!r} is met but the policy states no maximum payout."
 
+    assumption = None
     if t.exit_threshold is None:
         method, fraction = "fixed", 1.0
+        assumption = (
+            f"DEFAULT ASSUMPTION, not from the policy: {t.name!r} states no cut-off, so its "
+            f"full maximum of {t.max_payout_pct:g}% of the sum insured is paid. The policy "
+            "may intend a lower amount (e.g. 'up to'); confirm before approving."
+        )
     elif not _exit_on_far_side(ev):
         return (
             f"{t.name!r} has exit {t.exit_threshold:g} on the wrong side of "
@@ -65,6 +71,7 @@ def price_cover(ev: TriggerEvaluation) -> CoverPayout | str:
         method=method,
         payout_fraction=round(fraction, 4),
         payout_pct=round(fraction * t.max_payout_pct, 2),
+        assumption=assumption,
     )
 
 
@@ -85,8 +92,6 @@ def estimate_claim(request: ClaimRequest, policy: PolicyAssessment) -> ClaimEsti
                 unpriced = True
             else:
                 covers.append(priced)
-                if priced.method == "fixed":
-                    notes.append(f"{priced.name!r} has no exit threshold; paid at its maximum.")
 
     raw_total = sum(c.payout_pct for c in covers)
     total = min(raw_total, MAX_TOTAL_PAYOUT_PCT)
@@ -110,6 +115,7 @@ def estimate_claim(request: ClaimRequest, policy: PolicyAssessment) -> ClaimEsti
         total_payout_pct=round(total, 2),
         payout_amount=0.0 if si_total is None else round(total / 100 * si_total, 2),
         needs_manual_assessment=unpriced,
+        assumptions=[c.assumption for c in covers if c.assumption],
         notes=notes,
     )
 
@@ -129,9 +135,14 @@ def claim_agent(state: Mapping[str, Any]) -> dict[str, Any]:
     policy = PolicyAssessment.model_validate(state["policy"])
     estimate = estimate_claim(request, policy)
 
+    question = "Approve this claim payout?"
+    if estimate.assumptions:
+        question += " The amount relies on default assumptions not stated in the policy; see"
+        question += " 'assumptions'."
     resume = interrupt(
         {
-            "question": "Approve this claim payout?",
+            "question": question,
+            "assumptions": estimate.assumptions,
             "resume_schema": ApprovalDecision.model_json_schema(),
             "estimate": estimate.model_dump(mode="json"),
         }
