@@ -1,6 +1,5 @@
 """End to end: synthetic ERA5 weather + sample policy PDFs through the supervisor."""
 
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -12,38 +11,8 @@ from crop_insurance_agent.graph.supervisor import next_step
 from crop_insurance_agent.rag import PolicyStore
 from crop_insurance_agent.schemas.advisory import AdvisoryDraft, AdvisoryNote
 from crop_insurance_agent.schemas.policy import PolicyTerms
-from tests.conftest import POINT, TARGET_YEAR, hash_embedder
-from tests.factories import ABSOLUTE, HEAT, POLICY, RELATIVE, StubLLM
-
-TERMS = PolicyTerms(
-    crops=["Paddy (rice)"],
-    risk_period_start=date(TARGET_YEAR, 6, 1),
-    risk_period_end=date(TARGET_YEAR, 9, 30),
-    sum_insured_per_ha=60000,
-    triggers=[ABSOLUTE, RELATIVE, HEAT],
-)
-# Synthetic season: 146.4 mm vs 292.8 normal (50% deficit), GDU +13.3%.
-# Absolute cover saturates (40%), relative pays (50-40)/(80-40) x 20 = 5%: 45% of
-# Rs 1,20,000 = Rs 54,000.
-ADVICE = AdvisoryDraft(
-    headline="Your claim was approved for Rs 54,000.",
-    explanation="Your rice got 146.4 mm of rain against the usual 292.8 mm.",
-)
-
-
-def _inputs(**weather_kw) -> dict:
-    weather = dict(
-        latitude=POINT[0],
-        longitude=POINT[1],
-        season_start=f"{TARGET_YEAR}-06-01",
-        season_end=f"{TARGET_YEAR}-09-30",
-        crop="rice",
-    )
-    return {
-        "weather_request": weather | weather_kw,
-        "policy_request": {"policy_id": POLICY},
-        "claim_request": {"claim_id": "C-42", "area_ha": 2.0},
-    }
+from tests.conftest import hash_embedder
+from tests.factories import ADVICE, TERMS, StubLLM, graph_inputs
 
 
 @pytest.fixture
@@ -62,7 +31,7 @@ def graph(data_dir: Path, policies_dir: Path, tmp_path: Path, llm: StubLLM):
 
 def test_full_claim_pauses_for_review_then_advises(graph, llm):
     config = {"configurable": {"thread_id": "claim-42"}}
-    paused = graph.invoke(_inputs(), config)
+    paused = graph.invoke(graph_inputs(), config)
 
     (pending,) = paused["__interrupt__"]
     assert pending.value["estimate"]["payout_amount"] == 54000.0
@@ -85,7 +54,7 @@ def test_weather_failure_is_explained_without_a_claim(graph, llm):
         headline="We could not assess your claim.", explanation="No weather data was found."
     )
     done = graph.invoke(
-        _inputs(latitude=20.0, longitude=85.0), {"configurable": {"thread_id": "x"}}
+        graph_inputs(latitude=20.0, longitude=85.0), {"configurable": {"thread_id": "x"}}
     )
     assert done["error"]["agent"] == "weather_agent"
     assert "outside the grid" in done["error"]["message"]
@@ -94,7 +63,7 @@ def test_weather_failure_is_explained_without_a_claim(graph, llm):
 
 
 def test_unknown_policy_is_explained(graph):
-    inputs = _inputs() | {"policy_request": {"policy_id": "no_such_policy"}}
+    inputs = graph_inputs() | {"policy_request": {"policy_id": "no_such_policy"}}
     done = graph.invoke(inputs, {"configurable": {"thread_id": "y"}})
     assert done["error"]["kind"] == "PolicyNotFoundError"
     assert "claim" not in done and done["advisory"] is not None
@@ -112,13 +81,13 @@ def test_routing_order():
 
 def test_run_status_marks_failures(graph, caplog):
     done = graph.invoke(
-        _inputs(latitude=20.0, longitude=85.0), {"configurable": {"thread_id": "f"}}
+        graph_inputs(latitude=20.0, longitude=85.0), {"configurable": {"thread_id": "f"}}
     )
     assert done["status"] == "failed"
     assert any(r.levelname == "ERROR" and "weather_agent" in r.message for r in caplog.records)
 
     config = {"configurable": {"thread_id": "ok"}}
-    graph.invoke(_inputs(), config)
+    graph.invoke(graph_inputs(), config)
     assert "status" not in graph.get_state(config).values  # paused, not finished
     done = graph.invoke(Command(resume={"approved": False, "reviewer": "o"}), config)
     assert done["status"] == "completed"

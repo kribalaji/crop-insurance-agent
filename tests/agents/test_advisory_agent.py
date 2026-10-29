@@ -10,70 +10,17 @@ from crop_insurance_agent.agents.advisory_agent import (
     write_advisory,
 )
 from crop_insurance_agent.schemas.advisory import AdvisoryDraft
-from crop_insurance_agent.schemas.claim import (
-    ApprovalDecision,
-    ClaimDecision,
-    ClaimEstimate,
-    CoverPayout,
+from tests.factories import (
+    StubLLM,
+    make_claim_decision,
+    make_policy_assessment,
+    make_weather,
 )
-from crop_insurance_agent.schemas.policy import PolicyAssessment, TriggerEvaluation
-from tests.factories import ABSOLUTE, HEAT, POLICY, RELATIVE, StubLLM, make_weather
-
-
-def _policy() -> PolicyAssessment:
-    evs = [
-        TriggerEvaluation(trigger=ABSOLUTE, observed=292.8, met=True, quote_verified=True),
-        TriggerEvaluation(trigger=RELATIVE, observed=50.0, met=True, quote_verified=True),
-        TriggerEvaluation(trigger=HEAT, observed=13.3, met=False, quote_verified=True),
-    ]
-    return PolicyAssessment(
-        policy_id=POLICY,
-        crop="rice",
-        crop_covered=True,
-        sum_insured_per_ha=60000,
-        evaluations=evs,
-        triggered=True,
-        citations=[],
-    )
-
-
-def _claim(approved=True, assumptions=(), comment=None) -> ClaimDecision:
-    cover = CoverPayout(
-        name=ABSOLUTE.name,
-        metric=ABSOLUTE.metric,
-        observed=292.8,
-        threshold=600,
-        exit_threshold=250,
-        max_payout_pct=40,
-        method="linear",
-        payout_fraction=0.8777,
-        payout_pct=35.11,
-    )
-    est = ClaimEstimate(
-        claim_id="C-1",
-        policy_id=POLICY,
-        crop="rice",
-        area_ha=2,
-        sum_insured_per_ha=60000,
-        sum_insured_total=120000,
-        covers=[cover],
-        total_payout_pct=40.11,
-        payout_amount=48132.0,
-        needs_manual_assessment=False,
-        assumptions=list(assumptions),
-    )
-    approval = ApprovalDecision(approved=approved, reviewer="officer-1", comment=comment)
-    return ClaimDecision(
-        estimate=est,
-        approval=approval,
-        status="approved" if approved else "rejected",
-        payout_amount=48132.0 if approved else 0.0,
-    )
 
 
 @pytest.fixture
 def facts():
-    return build_facts(make_weather(), _policy(), _claim(), None)
+    return build_facts(make_weather(), make_policy_assessment(), make_claim_decision(), None)
 
 
 def test_number_check_allows_rounding_and_indian_grouping(facts):
@@ -111,11 +58,19 @@ def test_fabricated_number_falls_back_to_template(facts):
 
 def test_template_mentions_assumptions_rejection_and_errors():
     with_assumption = build_facts(
-        make_weather(), _policy(), _claim(assumptions=["DEFAULT ASSUMPTION ..."]), None
+        make_weather(),
+        make_policy_assessment(),
+        make_claim_decision(assumptions=["DEFAULT ASSUMPTION ..."]),
+        None,
     )
     assert "default rule" in template_advisory(with_assumption).explanation
 
-    rejected = build_facts(make_weather(), _policy(), _claim(False, comment="Duplicate"), None)
+    rejected = build_facts(
+        make_weather(),
+        make_policy_assessment(),
+        make_claim_decision(False, comment="Duplicate"),
+        None,
+    )
     t = template_advisory(rejected)
     assert "not approved" in t.headline and "Duplicate" in t.explanation
 

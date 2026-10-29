@@ -14,8 +14,7 @@ from crop_insurance_agent.rag import PolicyStore
 from crop_insurance_agent.schemas.advisory import AdvisoryDraft
 from crop_insurance_agent.schemas.policy import PolicyTerms
 from tests.conftest import hash_embedder
-from tests.factories import StubLLM
-from tests.test_graph import ADVICE, TERMS, _inputs
+from tests.factories import ADVICE, TERMS, StubLLM, graph_inputs
 
 KEYS = {"langfuse_public_key": "pk-lf-test", "langfuse_secret_key": "sk-lf-test"}
 
@@ -53,7 +52,7 @@ def test_claim_run_is_traced_as_one_session(exporter, data_dir: Path, policies_d
     assert config["configurable"] == {"thread_id": "C-42"}
     assert config["metadata"]["langfuse_session_id"] == "C-42"
 
-    graph.invoke(_inputs(), config)
+    graph.invoke(graph_inputs(), config)
     graph.invoke(Command(resume={"approved": True, "reviewer": "officer-1"}), config)
     flush(settings)
 

@@ -13,11 +13,9 @@ from crop_insurance_agent.schemas.advisory import AdvisoryDraft
 from crop_insurance_agent.schemas.policy import PolicyTerms
 from crop_insurance_agent.ui.client import ApiClient, ApiError
 from tests.conftest import hash_embedder
-from tests.factories import StubLLM
-from tests.test_api import _submission
-from tests.test_graph import ADVICE, TERMS
+from tests.factories import ADVICE, TERMS, StubLLM, api_submission
 
-APP = str(Path(__file__).parents[1] / "src/crop_insurance_agent/ui/app.py")
+APP = str(Path(__file__).parents[2] / "src/crop_insurance_agent/ui/app.py")
 
 
 @pytest.fixture
@@ -57,7 +55,7 @@ def _texts(at: AppTest) -> str:
 
 
 def test_reviewer_approves_from_the_queue(client):
-    client.submit(_submission("C-1"))
+    client.submit(api_submission("C-1"))
     at = _app(client)
     assert not at.exception
     assert "Estimated payout=Rs 54,000" in _texts(at)
@@ -73,7 +71,7 @@ def test_reviewer_approves_from_the_queue(client):
 
 
 def test_reviewer_name_is_required(client):
-    client.submit(_submission("C-2"))
+    client.submit(api_submission("C-2"))
     at = _app(client)
     next(b for b in at.button if b.label == "Reject").click()
     at.run()
@@ -84,14 +82,14 @@ def test_reviewer_name_is_required(client):
 def test_default_assumptions_are_shown_to_the_reviewer(client, terms):
     no_exit = TERMS.triggers[1].model_copy(update={"exit_threshold": None})
     terms["value"] = TERMS.model_copy(update={"triggers": [no_exit]})
-    client.submit(_submission("C-6"))
+    client.submit(api_submission("C-6"))
     at = _app(client)
     warnings = [w.value for w in at.warning]
     assert any(w.startswith("DEFAULT ASSUMPTION, not from the policy") for w in warnings)
 
 
 def test_failed_claim_is_flagged_in_all_claims(client):
-    client.submit(_submission("C-3", latitude=20.0, longitude=85.0))
+    client.submit(api_submission("C-3", latitude=20.0, longitude=85.0))
     at = _app(client)
     assert not at.exception
     text = _texts(at)

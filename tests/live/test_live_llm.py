@@ -12,6 +12,7 @@ from crop_insurance_agent.agents import policy_agent as pa
 from crop_insurance_agent.config import Settings
 from crop_insurance_agent.llm import get_llm
 from crop_insurance_agent.rag import PolicyStore
+from tests.factories import make_claim_decision, make_policy_assessment
 
 pytestmark = [
     pytest.mark.live,
@@ -59,9 +60,8 @@ def test_advisory_numbers_come_from_facts():
         write_advisory,
     )
     from tests.factories import make_weather
-    from tests.test_advisory_agent import _claim, _policy
 
-    facts = build_facts(make_weather(), _policy(), _claim(), None)
+    facts = build_facts(make_weather(), make_policy_assessment(), make_claim_decision(), None)
     note = write_advisory(facts, get_llm())
     print(f"\n[{note.generated_by}] {note.headline}\n{note.explanation}\n{note.notes}")
     assert unsupported_numbers(f"{note.headline} {note.explanation}", facts) == []

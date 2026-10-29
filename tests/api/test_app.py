@@ -10,27 +10,8 @@ from crop_insurance_agent.config import Settings
 from crop_insurance_agent.rag import PolicyStore
 from crop_insurance_agent.schemas.advisory import AdvisoryDraft
 from crop_insurance_agent.schemas.policy import PolicyTerms
-from tests.conftest import POINT, TARGET_YEAR, hash_embedder
-from tests.factories import POLICY, StubLLM
-from tests.test_graph import ADVICE, TERMS
-
-APPROVE = {"approved": True, "reviewer": "officer-1", "comment": "rain gauge agrees"}
-
-
-def _submission(claim_id="C-1", **weather_kw) -> dict:
-    weather = {
-        "latitude": POINT[0],
-        "longitude": POINT[1],
-        "season_start": f"{TARGET_YEAR}-06-01",
-        "season_end": f"{TARGET_YEAR}-09-30",
-        "crop": "rice",
-    }
-    return {
-        "claim_id": claim_id,
-        "weather": weather | weather_kw,
-        "policy_id": POLICY,
-        "area_ha": 2.0,
-    }
+from tests.conftest import hash_embedder
+from tests.factories import ADVICE, APPROVE, POLICY, TERMS, StubLLM, api_submission
 
 
 @pytest.fixture
@@ -56,7 +37,7 @@ def make_client(settings: Settings, llm: StubLLM):
 
 def test_submit_review_and_complete(make_client):
     with make_client() as client:
-        r = client.post("/claims", json=_submission())
+        r = client.post("/claims", json=api_submission())
         assert r.status_code == 201
         body = r.json()
         assert body["status"] == "awaiting_approval"
@@ -85,7 +66,7 @@ def test_submit_review_and_complete(make_client):
 
 def test_paused_claim_survives_restart(make_client):
     with make_client() as client:
-        client.post("/claims", json=_submission("C-2"))
+        client.post("/claims", json=api_submission("C-2"))
 
     with make_client() as client:
         body = client.get("/claims/C-2").json()
@@ -98,7 +79,7 @@ def test_paused_claim_survives_restart(make_client):
 
 def test_agent_error_is_explained_and_listed_as_failed(make_client):
     with make_client() as client:
-        r = client.post("/claims", json=_submission("C-3", latitude=20.0, longitude=85.0))
+        r = client.post("/claims", json=api_submission("C-3", latitude=20.0, longitude=85.0))
         body = r.json()
         assert r.status_code == 201 and body["status"] == "failed"
         assert body["error"]["agent"] == "weather_agent"
@@ -121,7 +102,7 @@ def test_stalled_claim_resumes_without_repeating_steps(make_client, llm):
 
     llm.responses[AdvisoryDraft] = advice
     with make_client() as client:
-        client.post("/claims", json=_submission("C-4"))
+        client.post("/claims", json=api_submission("C-4"))
         r = client.post("/claims/C-4/decision", json=APPROVE)
         assert r.status_code == 500
         assert r.json()["status"] == "stalled" and "retry" in r.json()["hint"]
@@ -139,12 +120,12 @@ def test_stalled_claim_resumes_without_repeating_steps(make_client, llm):
 def test_request_errors(make_client):
     with make_client() as client:
         assert client.get("/claims/nope").status_code == 404
-        client.post("/claims", json=_submission("C-5"))
-        assert client.post("/claims", json=_submission("C-5")).status_code == 409
+        client.post("/claims", json=api_submission("C-5"))
+        assert client.post("/claims", json=api_submission("C-5")).status_code == 409
         r = client.post("/claims/C-5/decision", json={"approved": True})
         assert r.status_code == 422  # reviewer is required
         assert client.post("/claims/C-5/retry").status_code == 409
-        bad = _submission("bad id!")
+        bad = api_submission("bad id!")
         assert client.post("/claims", json=bad).status_code == 422
 
 
